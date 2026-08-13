@@ -81,26 +81,43 @@ JARVIS_SYSTEM_PROMPT = (
     "Keep answers concise and clear, suitable for a Discord chat message. "
     "If the user is your creator/master (User ID: 1503884431453327400), be extra respectful and call them 'Master'."
 )
-async def ask_gemini(question: str) -> str:
-    """Send a question to Gemini AI and return the text reply."""
+# Per-user conversation memory, so follow-ups like "ama full ah sollu" or
+# "adha vera maadhiri sollu" actually know what the previous message was
+# about. Resets when the bot restarts (in-memory only) — that's fine for a
+# Discord assistant. Use /reset to clear it manually mid-conversation.
+chat_history = {}
+MAX_HISTORY_TURNS = 8  # keep last N user+model exchanges per user
+
+
+async def ask_gemini(user_id: int, question: str) -> str:
+    """Send a question (with this user's recent history) to Gemini AI."""
     if not gemini_client:
         return "⚠️ Master, Render-la `GEMINI_API_KEY` set aagala! Check Environment Variables."
+
+    history = chat_history.get(user_id, [])
+    history.append({"role": "user", "parts": [{"text": question}]})
+    history = history[-(MAX_HISTORY_TURNS * 2):]
+
     try:
         response = await asyncio.to_thread(
             gemini_client.models.generate_content,
             model=AI_MODEL,
-            contents=question,
+            contents=history,
             config=types.GenerateContentConfig(
                 system_instruction=JARVIS_SYSTEM_PROMPT,
                 max_output_tokens=800,
             )
         )
-        if response and response.text:
-            return response.text.strip()
-        return "Master, response empty-a vandhurukku!"
+        if not (response and response.text):
+            return "Master, response empty-a vandhurukku!"
+        answer = response.text.strip()
     except Exception as e:
         print(f"⚠️ Gemini API Error Details: {e}")
         return f"Sorry Master, API Error: `{e}`"
+
+    history.append({"role": "model", "parts": [{"text": answer}]})
+    chat_history[user_id] = history
+    return answer
 @bot.event
 async def on_ready():
     print(f"✅ {bot.user.name} online-ku vandhudan master!")
@@ -117,7 +134,7 @@ async def on_message(message: discord.Message):
             await message.reply("Sollunga master, enna ketkanum? 🤖")
             return
         async with message.channel.typing():
-            answer = await ask_gemini(question)
+            answer = await ask_gemini(message.author.id, question)
         await message.reply(answer)
     await bot.process_commands(message)
 # ---------------------------------------------------------------------------
@@ -174,10 +191,16 @@ async def tell_about_me(
 @app_commands.describe(question="What do you want to ask JARVIS?")
 async def ask(interaction: discord.Interaction, question: str):
     await interaction.response.defer(thinking=True)
-    answer = await ask_gemini(question)
+    answer = await ask_gemini(interaction.user.id, question)
     if len(answer) > 1900:
         answer = answer[:1900] + "…"
     await interaction.followup.send(answer)
+@bot.tree.command(name="reset", description="Clear your AI chat memory with JARVIS")
+async def reset(interaction: discord.Interaction):
+    chat_history.pop(interaction.user.id, None)
+    await interaction.response.send_message(
+        "✅ Memory clear pannitten master, fresh-a start pannalam!", ephemeral=True
+    )
 # Web server start
 keep_alive()
 TOKEN = os.getenv("BOT_TOKEN")

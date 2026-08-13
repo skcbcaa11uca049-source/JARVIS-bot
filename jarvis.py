@@ -38,7 +38,7 @@ bot = Client()
 MASTER_ID = 1503884431453327400
 
 # ---------------------------------------------------------------------------
-# 🧠 Gemini AI Brain Setup (google-generativeai)
+# 🧠 Gemini AI Brain Setup
 # ---------------------------------------------------------------------------
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
@@ -51,9 +51,9 @@ JARVIS_SYSTEM_PROMPT = (
     "If the user is your creator/master (User ID: 1503884431453327400), be extra respectful and call them 'Master'."
 )
 
-# High limit 100% Free Model (1,500 requests per day)
+# Latest v1beta supported stable model
 ai_model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
+    model_name="gemini-2.0-flash",
     system_instruction=JARVIS_SYSTEM_PROMPT
 )
 

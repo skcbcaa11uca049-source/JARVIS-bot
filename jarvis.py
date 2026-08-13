@@ -38,7 +38,7 @@ bot = Client()
 MASTER_ID = 1503884431453327400
 
 # ---------------------------------------------------------------------------
-# 🧠 Gemini AI Brain Setup
+# 🧠 Gemini AI Brain Setup (google-generativeai)
 # ---------------------------------------------------------------------------
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
@@ -51,8 +51,8 @@ JARVIS_SYSTEM_PROMPT = (
     "If the user is your creator/master (User ID: 1503884431453327400), be extra respectful and call them 'Master'."
 )
 
-# High Quota Free Model (1500 Requests/day)
-model = genai.GenerativeModel(
+# High limit 100% Free Model (1,500 requests per day)
+ai_model = genai.GenerativeModel(
     model_name="gemini-1.5-flash",
     system_instruction=JARVIS_SYSTEM_PROMPT
 )
@@ -61,19 +61,19 @@ async def ask_gemini(question: str) -> str:
     """Send a question to Gemini AI and return the text reply."""
     try:
         response = await asyncio.to_thread(
-            model.generate_content,
+            ai_model.generate_content,
             question
         )
         if response and response.text:
             return response.text.strip()
-        return "Master, empty response vandhurukku!"
+        return "Master, response empty-a vandhurukku!"
     except Exception as e:
-        print(f"⚠️ Gemini API Error: {e}")
+        print(f"⚠️ Gemini API Error Details: {e}")
         return f"Sorry Master, API issue: `{e}`"
 
 @bot.event
 async def on_ready():
-    print(f"✅ {bot.user.name} (Gemini AI Powered) online-ku vandhudan master!")
+    print(f"✅ {bot.user.name} (Gemini AI Free) online-ku vandhudan master!")
 
 @bot.event
 async def on_message(message: discord.Message):

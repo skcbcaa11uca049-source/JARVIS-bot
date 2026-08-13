@@ -167,11 +167,27 @@ async def ask_gemini(user_id: int, question: str) -> str:
 @bot.event
 async def on_ready():
     print(f"✅ {bot.user.name} online-ku vandhudan master!")
+# Only respond to @mentions inside this channel (by name, case-insensitive).
+# Keeps AI usage (and quota) contained to one channel instead of every
+# channel in the server. Override with the AI_CHANNEL env var if your
+# channel is named something else.
+AI_CHANNEL_NAME = os.getenv("AI_CHANNEL", "jarvis").lower()
+
+
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
     if bot.user in message.mentions:
+        channel_name = getattr(message.channel, "name", "") or ""
+        if channel_name.lower() != AI_CHANNEL_NAME:
+            await message.reply(
+                f"Boss, AI chat mattum #{AI_CHANNEL_NAME} channel-la thaan work aagum! "
+                f"Ange po, naan angae full-ah help pannuren. 😊"
+            )
+            await bot.process_commands(message)
+            return
+
         question = message.content
         for mention in (f"<@{bot.user.id}>", f"<@!{bot.user.id}>"):
             question = question.replace(mention, "")

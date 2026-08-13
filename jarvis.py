@@ -5,7 +5,8 @@ from discord import app_commands
 from discord.ext import commands
 from flask import Flask
 from threading import Thread
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 # Render Port Timeout-a prevent panna Web Server
 app = Flask("")
@@ -40,7 +41,7 @@ MASTER_ID = 1503884431453327400
 # ---------------------------------------------------------------------------
 # 🧠 Gemini AI Brain Setup
 # ---------------------------------------------------------------------------
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 JARVIS_SYSTEM_PROMPT = (
     "You are JARVIS, a witty, authentic, and helpful Tamil-English (Tanglish) speaking "
@@ -51,29 +52,26 @@ JARVIS_SYSTEM_PROMPT = (
     "If the user is your creator/master (User ID: 1503884431453327400), be extra respectful and call them 'Master'."
 )
 
-# Latest v1beta supported stable model
-ai_model = genai.GenerativeModel(
-    model_name="gemini-2.0-flash",
-    system_instruction=JARVIS_SYSTEM_PROMPT
-)
-
 async def ask_gemini(question: str) -> str:
     """Send a question to Gemini AI and return the text reply."""
     try:
         response = await asyncio.to_thread(
-            ai_model.generate_content,
-            question
+            gemini_client.models.generate_content,
+            model="gemini-2.5-flash",
+            contents=question,
+            config=types.GenerateContentConfig(
+                system_instruction=JARVIS_SYSTEM_PROMPT,
+                max_output_tokens=600,
+            )
         )
-        if response and response.text:
-            return response.text.strip()
-        return "Master, response empty-a vandhurukku!"
+        return response.text.strip()
     except Exception as e:
-        print(f"⚠️ Gemini API Error Details: {e}")
-        return f"Sorry Master, API issue: `{e}`"
+        print(f"⚠️ Gemini AI error: {e}")
+        return "Sorry Master/Agent, en Gemini brain-la small network glitch! 🥲 Konjam neram kalichu try pannunga."
 
 @bot.event
 async def on_ready():
-    print(f"✅ {bot.user.name} (Gemini AI Free) online-ku vandhudan master!")
+    print(f"✅ {bot.user.name} (Gemini AI Powered) online-ku vandhudan master!")
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -87,7 +85,7 @@ async def on_message(message: discord.Message):
         question = question.strip()
 
         if not question:
-            await message.reply("Sollunga master, enna ketkanum? 🤖")
+            await message.reply("Sollunga master, enna ketkanum? 🤖 (e.g. `@JARVIS hello!`) ")
             return
 
         async with message.channel.typing():
@@ -105,7 +103,7 @@ async def hello(interaction: discord.Interaction):
         greeting = f"Vanakkam Agent {user.mention}! Naan thaan JARVIS, Rock Fox Games Tamil assistant!"
     await interaction.response.send_message(greeting)
 
-@bot.tree.command(name="ask", description="Ask JARVIS anything")
+@bot.tree.command(name="ask", description="Ask JARVIS anything (Powered by Gemini AI)")
 @app_commands.describe(question="What do you want to ask JARVIS?")
 async def ask(interaction: discord.Interaction, question: str):
     await interaction.response.defer(thinking=True)

@@ -5,15 +5,14 @@ from discord import app_commands
 from discord.ext import commands
 from flask import Flask
 from threading import Thread
-from google import genai
-from google.genai import types
+from openai import OpenAI
 
 # Render Port Timeout-a prevent panna Web Server
 app = Flask("")
 
 @app.route('/')
 def home():
-    return "JARVIS (Gemini 2.5 Flash Lite) is Online 24/7!"
+    return "JARVIS (DeepSeek Powered) is Online 24/7!"
 
 def run_web():
     port = int(os.environ.get("PORT", 8080))
@@ -39,9 +38,12 @@ bot = Client()
 MASTER_ID = 1503884431453327400
 
 # ---------------------------------------------------------------------------
-# 🧠 Gemini AI Brain Setup
+# 🧠 DeepSeek AI Brain Setup
 # ---------------------------------------------------------------------------
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+deepseek_client = OpenAI(
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    base_url="https://api.deepseek.com"
+)
 
 JARVIS_SYSTEM_PROMPT = (
     "You are JARVIS, a witty, authentic, and helpful Tamil-English (Tanglish) speaking "
@@ -52,28 +54,29 @@ JARVIS_SYSTEM_PROMPT = (
     "If the user is your creator/master (User ID: 1503884431453327400), be extra respectful and call them 'Master'."
 )
 
-async def ask_gemini(question: str) -> str:
-    """Send a question to Gemini AI and return the text reply."""
+async def ask_deepseek(question: str) -> str:
+    """Send a question to DeepSeek AI and return the text reply."""
     try:
         response = await asyncio.to_thread(
-            gemini_client.models.generate_content,
-            model="gemini-2.5-flash-lite",
-            contents=question,
-            config=types.GenerateContentConfig(
-                system_instruction=JARVIS_SYSTEM_PROMPT,
-                max_output_tokens=800,
-            )
+            deepseek_client.chat.completions.create,
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": JARVIS_SYSTEM_PROMPT},
+                {"role": "user", "content": question},
+            ],
+            max_tokens=800,
+            temperature=0.7,
         )
-        if response and response.text:
-            return response.text.strip()
+        if response and response.choices:
+            return response.choices[0].message.content.strip()
         return "Master, response empty-a vandhurukku!"
     except Exception as e:
-        print(f"⚠️ Gemini AI Error: {e}")
-        return "Sorry Master/Agent, en Gemini brain-la small network glitch! 🥲"
+        print(f"⚠️ DeepSeek API ERROR: {e}")
+        return f"Sorry Master, internal API issue: `{e}`"
 
 @bot.event
 async def on_ready():
-    print(f"✅ {bot.user.name} online-ku vandhudan master!")
+    print(f"✅ {bot.user.name} (DeepSeek AI Powered) online-ku vandhudan master!")
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -91,7 +94,7 @@ async def on_message(message: discord.Message):
             return
 
         async with message.channel.typing():
-            answer = await ask_gemini(question)
+            answer = await ask_deepseek(question)
         await message.reply(answer)
 
     await bot.process_commands(message)
@@ -105,11 +108,11 @@ async def hello(interaction: discord.Interaction):
         greeting = f"Vanakkam Agent {user.mention}! Naan thaan JARVIS, Rock Fox Games Tamil assistant!"
     await interaction.response.send_message(greeting)
 
-@bot.tree.command(name="ask", description="Ask JARVIS anything")
+@bot.tree.command(name="ask", description="Ask JARVIS anything (Powered by DeepSeek AI)")
 @app_commands.describe(question="What do you want to ask JARVIS?")
 async def ask(interaction: discord.Interaction, question: str):
     await interaction.response.defer(thinking=True)
-    answer = await ask_gemini(question)
+    answer = await ask_deepseek(question)
     if len(answer) > 1900:
         answer = answer[:1900] + "…"
     await interaction.followup.send(answer)

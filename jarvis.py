@@ -13,7 +13,7 @@ app = Flask("")
 
 @app.route('/')
 def home():
-    return "JARVIS (Gemini Free Powered) is Online 24/7!"
+    return "JARVIS (Gemini Powered) is Online 24/7!"
 
 def run_web():
     port = int(os.environ.get("PORT", 8080))
@@ -39,7 +39,7 @@ bot = Client()
 MASTER_ID = 1503884431453327400
 
 # ---------------------------------------------------------------------------
-# 🧠 Free Gemini AI Brain Setup
+# 🧠 Gemini AI Brain Setup
 # ---------------------------------------------------------------------------
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
@@ -57,7 +57,7 @@ async def ask_gemini(question: str) -> str:
     try:
         response = await asyncio.to_thread(
             gemini_client.models.generate_content,
-            model="gemini-1.5-flash",  # Guaranteed 100% Free & Stable Model
+            model="gemini-2.5-flash",
             contents=question,
             config=types.GenerateContentConfig(
                 system_instruction=JARVIS_SYSTEM_PROMPT,
@@ -73,7 +73,7 @@ async def ask_gemini(question: str) -> str:
 
 @bot.event
 async def on_ready():
-    print(f"✅ {bot.user.name} (Gemini AI Free) online-ku vandhudan master!")
+    print(f"✅ {bot.user.name} (Gemini AI Powered) online-ku vandhudan master!")
 
 @bot.event
 async def on_message(message: discord.Message):

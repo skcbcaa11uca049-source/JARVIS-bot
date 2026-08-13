@@ -1,7 +1,29 @@
+import asyncio
 import os
 import discord
 from discord import app_commands
 from discord.ext import commands
+from flask import Flask
+from threading import Thread
+
+# Render Port Timeout-a prevent panna dummy Web Server
+app = Flask("")
+
+
+@app.route("/")
+def home():
+    return "JARVIS is Online 24/7!"
+
+
+def run_web():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+
+
+def keep_alive():
+    t = Thread(target=run_web)
+    t.start()
+
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -85,6 +107,8 @@ async def tell_about_me(
     await interaction.response.send_message(embed=embed)
 
 
-# Secure way: Token Cloud Environment variable-la irundhu edukkum
+# Web server-a background-la start pannrom
+keep_alive()
+
 TOKEN = os.getenv("BOT_TOKEN")
 bot.run(TOKEN)

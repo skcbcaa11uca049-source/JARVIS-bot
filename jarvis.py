@@ -1,5 +1,6 @@
 import asyncio
 import os
+import traceback
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -48,8 +49,14 @@ MASTER_ID = 1503884431453327400
 # ---------------------------------------------------------------------------
 # Render / Replit / wherever you host this needs an env var: ANTHROPIC_API_KEY
 # Get one from https://console.anthropic.com/
-ai_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-AI_MODEL = os.getenv("AI_MODEL", "claude-3-5-sonnet-latest")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+if not ANTHROPIC_API_KEY:
+    print("⚠️ ANTHROPIC_API_KEY illa! Render/host env vars-la add pannunga, illana AI reply work aagadhu.")
+ai_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+# Use a known-good dated model snapshot (safer than a "-latest" alias which
+# can change or 404 depending on your API access). Override via AI_MODEL env
+# var if you want a different Claude model.
+AI_MODEL = os.getenv("AI_MODEL", "claude-3-5-sonnet-20241022")
 
 JARVIS_SYSTEM_PROMPT = (
     "You are JARVIS, a witty and helpful Tamil-English (Tanglish) speaking "
@@ -85,6 +92,7 @@ async def ask_ai(user_id: int, question: str) -> str:
         answer = response.content[0].text.strip()
     except Exception as e:
         print(f"⚠️ AI error: {e}")
+        traceback.print_exc()
         return "Sorry da, en AI brain-la konjam network issue vandhurichu! 🥲 Konjam nerathula try pannunga."
 
     history.append({"role": "assistant", "content": answer})

@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -7,6 +8,7 @@ from flask import Flask
 from threading import Thread
 from google import genai
 from google.genai import types
+from google.genai import errors as genai_errors
 # Render Port Timeout-a prevent panna Web Server
 app = Flask("")
 @app.route('/')
@@ -35,43 +37,56 @@ MASTER_ID = 1503884431453327400
 api_key = os.getenv("GEMINI_API_KEY")
 gemini_client = genai.Client(api_key=api_key) if api_key else None
 
-# Gemini model names change over time (e.g. the 1.5 series was retired) —
-# instead of hardcoding one name and risking a 404 every time Google renames
-# things, ask Gemini itself which Flash-class models it currently supports
-# and pick the first one that's actually live for this API key.
-PREFERRED_MODELS = [
-    os.getenv("AI_MODEL"),   # manual override always wins if set
-    "gemini-flash-latest",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-]
-PREFERRED_MODELS = [m for m in PREFERRED_MODELS if m]
+# Gemini model names AND free-tier quotas change over time (the 1.5 series
+# was retired; some newer models like a hypothetical "3.6-flash" ship with a
+# tiny free quota e.g. 20 requests/day while older/"-lite" models usually
+# have a much more generous free allowance). Instead of hardcoding one model
+# and hoping it stays available/affordable, we:
+#   1. Ask Gemini which Flash-class models actually exist for this API key.
+#   2. Order them so cheaper/"-lite" models (higher free quota) are tried
+#      before newer flagship ones (lower free quota, more likely to 429).
+#   3. At request time, if a model returns 429 (quota) or 503 (overloaded),
+#      put it on a temporary cooldown and automatically retry with the next
+#      model in the list — so one exhausted/overloaded model doesn't take
+#      the whole bot down.
+_manual_override = os.getenv("AI_MODEL")
 
 
-def pick_gemini_model(client) -> str:
+def discover_gemini_models(client) -> list:
+    """Return an ordered list of Flash-class Gemini models live for this key."""
+    if _manual_override:
+        base = [_manual_override]
+    else:
+        base = []
     if not client:
-        return PREFERRED_MODELS[0]
+        return base or ["gemini-2.0-flash"]
     try:
-        available = set()
+        live = []
         for m in client.models.list():
             name = m.name.split("/")[-1] if "/" in m.name else m.name
-            available.add(name)
-        for candidate in PREFERRED_MODELS:
-            if candidate in available:
-                print(f"✅ Gemini model selected: {candidate}")
-                return candidate
-        # nothing in our preferred list matched — grab any flash model available
-        for name in available:
-            if "flash" in name:
-                print(f"✅ Gemini model selected (fallback): {name}")
-                return name
+            actions = m.supported_actions or []
+            if actions and "generateContent" not in actions:
+                continue
+            if "flash" in name.lower():
+                live.append(name)
+        seen = set()
+        live = [n for n in live if not (n in seen or seen.add(n))]
+        # cheaper "-lite" variants first (generally a much higher free
+        # quota), then the rest in whatever order Google returned them
+        live.sort(key=lambda n: 0 if "lite" in n.lower() else 1)
+        for name in live:
+            if name not in base:
+                base.append(name)
+        print(f"✅ Gemini models available for this key: {base}")
     except Exception as e:
-        print(f"⚠️ Could not list Gemini models, using default. Reason: {e}")
-    return PREFERRED_MODELS[0]
+        print(f"⚠️ Could not list Gemini models, using defaults. Reason: {e}")
+        base += ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+    return base or ["gemini-2.0-flash"]
 
 
-AI_MODEL = pick_gemini_model(gemini_client)
+CANDIDATE_MODELS = discover_gemini_models(gemini_client)
+# model_name -> unix timestamp until which we skip it (rate-limited/overloaded)
+_model_cooldown = {}
 
 JARVIS_SYSTEM_PROMPT = (
     "You are JARVIS, a witty, authentic, and helpful Tamil-English (Tanglish) speaking "
@@ -98,22 +113,53 @@ async def ask_gemini(user_id: int, question: str) -> str:
     history.append({"role": "user", "parts": [{"text": question}]})
     history = history[-(MAX_HISTORY_TURNS * 2):]
 
-    try:
-        response = await asyncio.to_thread(
-            gemini_client.models.generate_content,
-            model=AI_MODEL,
-            contents=history,
-            config=types.GenerateContentConfig(
-                system_instruction=JARVIS_SYSTEM_PROMPT,
-                max_output_tokens=800,
+    now = time.time()
+    last_error = None
+    answer = None
+
+    for model_name in CANDIDATE_MODELS:
+        cooldown_until = _model_cooldown.get(model_name, 0)
+        if cooldown_until > now:
+            continue  # this model recently 429'd / 503'd — skip it for now
+        try:
+            response = await asyncio.to_thread(
+                gemini_client.models.generate_content,
+                model=model_name,
+                contents=history,
+                config=types.GenerateContentConfig(
+                    system_instruction=JARVIS_SYSTEM_PROMPT,
+                    max_output_tokens=800,
+                )
             )
-        )
-        if not (response and response.text):
-            return "Master, response empty-a vandhurukku!"
-        answer = response.text.strip()
-    except Exception as e:
-        print(f"⚠️ Gemini API Error Details: {e}")
-        return f"Sorry Master, API Error: `{e}`"
+            if not (response and response.text):
+                last_error = "Master, response empty-a vandhurukku!"
+                continue
+            answer = response.text.strip()
+            break
+        except genai_errors.APIError as e:
+            print(f"⚠️ Gemini API Error on '{model_name}': {e}")
+            if e.code == 429:
+                # daily/per-minute quota hit — cool this model down for 10 min
+                _model_cooldown[model_name] = now + 600
+                last_error = f"Sorry Master, API Error: `{e}`"
+                continue
+            if e.code == 503:
+                # temporarily overloaded on Google's side — cool down 30s
+                # and try the next model straight away
+                _model_cooldown[model_name] = now + 30
+                last_error = f"Sorry Master, API Error: `{e}`"
+                continue
+            # anything else (bad request, auth error, etc.) won't be fixed
+            # by switching models — stop trying and report it
+            last_error = f"Sorry Master, API Error: `{e}`"
+            break
+        except Exception as e:
+            print(f"⚠️ Unexpected Gemini error on '{model_name}': {e}")
+            last_error = f"Sorry Master, API Error: `{e}`"
+            break
+
+    if answer is None:
+        return last_error or "Sorry Master, ellaa AI models-um busy-ah irukku, konjam neram kalichu try pannunga! 🥲"
 
     history.append({"role": "model", "parts": [{"text": answer}]})
     chat_history[user_id] = history

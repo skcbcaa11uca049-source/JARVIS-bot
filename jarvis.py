@@ -13,7 +13,7 @@ app = Flask("")
 
 @app.route('/')
 def home():
-    return "JARVIS (Gemini Powered) is Online 24/7!"
+    return "JARVIS (Gemini 2.5 Flash Lite) is Online 24/7!"
 
 def run_web():
     port = int(os.environ.get("PORT", 8080))
@@ -57,21 +57,23 @@ async def ask_gemini(question: str) -> str:
     try:
         response = await asyncio.to_thread(
             gemini_client.models.generate_content,
-            model="gemini-2.5-flash",
+            model="gemini-2.5-flash-lite",
             contents=question,
             config=types.GenerateContentConfig(
                 system_instruction=JARVIS_SYSTEM_PROMPT,
-                max_output_tokens=600,
+                max_output_tokens=800,
             )
         )
-        return response.text.strip()
+        if response and response.text:
+            return response.text.strip()
+        return "Master, response empty-a vandhurukku!"
     except Exception as e:
-        print(f"⚠️ Gemini AI error: {e}")
-        return "Sorry Master/Agent, en Gemini brain-la small network glitch! 🥲 Konjam neram kalichu try pannunga."
+        print(f"⚠️ Gemini AI Error: {e}")
+        return "Sorry Master/Agent, en Gemini brain-la small network glitch! 🥲"
 
 @bot.event
 async def on_ready():
-    print(f"✅ {bot.user.name} (Gemini AI Powered) online-ku vandhudan master!")
+    print(f"✅ {bot.user.name} online-ku vandhudan master!")
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -85,7 +87,7 @@ async def on_message(message: discord.Message):
         question = question.strip()
 
         if not question:
-            await message.reply("Sollunga master, enna ketkanum? 🤖 (e.g. `@JARVIS hello!`) ")
+            await message.reply("Sollunga master, enna ketkanum? 🤖")
             return
 
         async with message.channel.typing():
@@ -103,7 +105,7 @@ async def hello(interaction: discord.Interaction):
         greeting = f"Vanakkam Agent {user.mention}! Naan thaan JARVIS, Rock Fox Games Tamil assistant!"
     await interaction.response.send_message(greeting)
 
-@bot.tree.command(name="ask", description="Ask JARVIS anything (Powered by Gemini AI)")
+@bot.tree.command(name="ask", description="Ask JARVIS anything")
 @app_commands.describe(question="What do you want to ask JARVIS?")
 async def ask(interaction: discord.Interaction, question: str):
     await interaction.response.defer(thinking=True)

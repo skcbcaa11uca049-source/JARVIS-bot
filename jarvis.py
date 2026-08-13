@@ -61,7 +61,7 @@ async def ask_gemini(question: str) -> str:
     try:
         response = await asyncio.to_thread(
             gemini_client.models.generate_content,
-            model="gemini-2.5-flash",
+            model="gemini-1.5-flash",  # High limit free model (1,500 RPD)
             contents=question,
             config=types.GenerateContentConfig(
                 system_instruction=JARVIS_SYSTEM_PROMPT,

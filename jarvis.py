@@ -5,8 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 from flask import Flask
 from threading import Thread
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 
 # Render Port Timeout-a prevent panna Web Server
 app = Flask("")
@@ -41,7 +40,7 @@ MASTER_ID = 1503884431453327400
 # ---------------------------------------------------------------------------
 # 🧠 Gemini AI Brain Setup
 # ---------------------------------------------------------------------------
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 JARVIS_SYSTEM_PROMPT = (
     "You are JARVIS, a witty, authentic, and helpful Tamil-English (Tanglish) speaking "
@@ -52,17 +51,18 @@ JARVIS_SYSTEM_PROMPT = (
     "If the user is your creator/master (User ID: 1503884431453327400), be extra respectful and call them 'Master'."
 )
 
+# High Quota Free Model (1500 Requests/day)
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-flash",
+    system_instruction=JARVIS_SYSTEM_PROMPT
+)
+
 async def ask_gemini(question: str) -> str:
     """Send a question to Gemini AI and return the text reply."""
     try:
         response = await asyncio.to_thread(
-            gemini_client.models.generate_content,
-            model="gemini-2.5-flash",
-            contents=question,
-            config=types.GenerateContentConfig(
-                system_instruction=JARVIS_SYSTEM_PROMPT,
-                max_output_tokens=800,
-            )
+            model.generate_content,
+            question
         )
         if response and response.text:
             return response.text.strip()
